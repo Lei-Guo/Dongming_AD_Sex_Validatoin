@@ -142,7 +142,7 @@ mean_sd_wb_sex_stage_apoe <- make_table(contrast_ls_sex_stage_apoe, exprset_wb, 
 Making mean sd table for the sex_ad_apoe
 ```{r Making mean sd table for the sex_ad_apoe}
 # contrast list
-contrast_ls_sex_ad_apoe <- apply(matrix(c("F_NL_33", "M_NL_33", "F_NL_34", "M_NL_34", "F_AD_33", "M_AD_33", "F_AD_34", "M_AD_34", "F_AD_33", "F_NL_33", "F_AD_34", "F_NL_34", "M_AD_33", "M_NL_33", "M_AD_34", "M_NL_34"), 2), 2, as.list)
+contrast_ls_sex_ad_apoe <- apply(matrix(c("F_AD_33", "F_NL_33", "F_AD_33", "M_AD_33", "F_AD_34", "F_NL_34", "F_AD_34", "M_AD_34", "F_NL_33", "M_NL_33", "F_NL_34", "M_NL_34", "M_AD_33", "M_NL_33", "M_AD_34", "M_NL_34"), 2), 2, as.list)
 
 # subsetting deg set
 deg_ddct_sex_ad_apoe <- deg_ddct[Contrast %in% sapply(contrast_ls_sex_ad_apoe, function(x) paste0(x[[1]], "-", x[[2]]))]
