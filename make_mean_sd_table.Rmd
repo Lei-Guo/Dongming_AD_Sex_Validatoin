@@ -1,0 +1,179 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Rscript -e "rmarkdown::render('make_mean_sd_table.Rmd')"
+
+Loading packages
+```{r Loading packages, message=FALSE, warning=FALSE}
+library(wrapr)
+library(data.table)
+library(limma)
+library(Biobase)
+library(genefilter)
+rm(list=ls())
+```
+
+
+Functions
+```{r Functions}
+#get sample id for each comparison group
+sample_subset <- function(group1, group2, exprset) {
+	
+	if (group1 %in% exprset$Sex_Stage_APOE & group2 %in% exprset$Sex_Stage_APOE) {
+	sub <- exprset[, exprset$Sex_Stage_APOE==group1 | exprset$Sex_Stage_APOE==group2] #subset the samples for the comparison
+	sub1 <- exprset[, exprset$Sex_Stage_APOE==group1]
+	sub2 <- exprset[, exprset$Sex_Stage_APOE==group2]
+	sample_sub <- list(sub1, sub2)
+	return(sample_sub)}
+	
+	else if (group1 %in% exprset$Sex_AD_APOE & group2 %in% exprset$Sex_AD_APOE) {
+	sub <- exprset[, exprset$Sex_AD_APOE==group1 | exprset$Sex_AD_APOE==group2] #subset the samples for the comparison
+	sub1 <- exprset[, exprset$Sex_AD_APOE==group1]
+	sub2 <- exprset[, exprset$Sex_AD_APOE==group2]
+	sample_sub <- list(sub1, sub2)
+	return(sample_sub)
+	}
+	
+	else if (group1 %in% exprset$Sex_Stage & group2 %in% exprset$Sex_Stage) {
+	sub <- exprset[, exprset$Sex_Stage==group1 | exprset$Sex_Stage==group2] #subset the samples for the comparison
+	sub1 <- exprset[, exprset$Sex_Stage==group1]
+	sub2 <- exprset[, exprset$Sex_Stage==group2]
+	sample_sub <- list(sub1, sub2)
+	return(sample_sub)
+	}
+	
+	else if (group1 %in% exprset$Sex_AD & group2 %in% exprset$Sex_AD) {
+	sub <- exprset[, exprset$Sex_AD==group1 | exprset$Sex_AD==group2] #subset the samples for the comparison
+	sub1 <- exprset[, exprset$Sex_AD==group1]
+	sub2 <- exprset[, exprset$Sex_AD==group2]
+	sample_sub <- list(sub1, sub2)
+	return(sample_sub)
+	}else {print ("Wrong comparison groups")}
+}
+
+
+# computing mean and sd for each sub group
+sub_mean_sd <- function(gene_id, exprset_sub1, exprset_sub2) {
+
+	sub1_exprset <- exprs(exprset_sub1[gene_id, ])
+	sub2_exprset <- exprs(exprset_sub2[gene_id, ])
+	sub1_mean <- rowMeans(sub1_exprset, na.rm = T)
+	sub1_se <- rowSds(sub1_exprset, na.rm = T)/sqrt(ncol(sub1_exprset))
+	sub2_mean <- rowMeans(sub2_exprset, na.rm = T)
+	sub2_se <- rowSds(sub2_exprset, na.rm = T)/sqrt(ncol(sub2_exprset))
+
+	mean_sd <- c(sub1_mean, sub1_se, sub2_mean, sub2_se)
+	return(mean_sd)
+}
+
+
+# making mean sd table
+make_table <- function(contrasts, exprset, genes, deg_df){
+	
+	# subsetting expressionset
+	exprset_sub <- lapply(contrasts, function(x) sample_subset(x[[1]], x[[2]], exprset))
+	
+	# calculating mean and sd
+	gene_mean_sd <- lapply(genes, function(x) lapply(exprset_sub, function(y) sub_mean_sd(x, y[[1]], y[[2]])))
+	
+	# making mean sd table
+	gene_mean_sd_df <- lapply(gene_mean_sd, function(x) t(do.call(cbind, x)))
+	
+	# adding extra columns
+	Comparison <- sapply(contrasts, function(x) paste0(x[[1]], "-", x[[2]]))
+	Comparison_ls <- c(rep(list(Comparison), length(genes)))
+	
+	GeneSymbol_ls <- lapply(genes, rep, length(Comparison))
+	
+	adj_p_ls <- lapply(genes, function(x) deg_df[Gene == x][["P.Value"]])
+	
+	gene_mean_sd_df <- mapply(cbind, Comparison_ls, GeneSymbol_ls, adj_p_ls, gene_mean_sd_df, SIMPLIFY = F)
+	
+	gene_mean_sd_df <- lapply(gene_mean_sd_df, as.data.frame)
+	
+	gene_mean_sd_df <- lapply(gene_mean_sd_df, setNames, c("Comparison", "GeneSymbol", "P.Value", "Group1_mean", "Group1_sd", "Group2_mean", "Group2_sd"))
+	
+	return(gene_mean_sd_df)
+}
+```
+
+
+
+Reading ddct and western blot data
+```{r Reading ddct and western blot data}
+# reading expressionsets
+exprset_neg_ddct <- readRDS("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/data/exprset_neg_ddct_4-16-2019.Rds")
+
+exprset_wb <- readRDS("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/data/exprset_western_blot_4-16-2019.Rds")
+
+# reading DEGs
+deg_ddct <- fread("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/qPCR/DEG_qPCR_combined.csv")
+
+deg_wb <- fread("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/WesternBlot/DEG_WesternBlot_combined.csv")
+
+```
+
+
+
+Making mean sd table for the sex_stage_apoe
+```{r Making mean sd table for the sex_stage_apoe}
+# contrast list
+contrast_ls_sex_stage_apoe <- apply(matrix(c("F_NL_33", "M_NL_33", "F_NL_34", "M_NL_34", "F_AD_early_33", "M_AD_early_33", "F_AD_early_33", "M_AD_late_33", "F_AD_early_34", "M_AD_early_34", "F_AD_early_34", "M_AD_late_34", "F_AD_late_33", "M_AD_early_33", "F_AD_late_33", "M_AD_late_33", "F_AD_late_34", "M_AD_early_34","F_AD_late_34", "M_AD_late_34"), 2), 2, as.list)
+
+# subsetting deg set
+deg_ddct_sex_stage_apoe <- deg_ddct[Contrast %in% sapply(contrast_ls_sex_stage_apoe, function(x) paste0(x[[1]], "-", x[[2]]))]
+
+deg_wb_sex_stage_apoe <- deg_wb[Contrast %in% sapply(contrast_ls_sex_stage_apoe, function(x) paste0(x[[1]], "-", x[[2]]))]
+
+# checking contrast orders between deg dfs and contrast_ls
+identical(deg_ddct_sex_stage_apoe$Contrast, rep(sapply(contrast_ls_sex_stage_apoe, function(x) paste0(x[[1]], "-", x[[2]])), length(unique(deg_ddct_sex_stage_apoe$Gene))))
+
+identical(deg_wb_sex_stage_apoe$Contrast, rep(sapply(contrast_ls_sex_stage_apoe, function(x) paste0(x[[1]], "-", x[[2]])), length(unique(deg_wb_sex_stage_apoe$Gene))))
+
+# Making mean sd table for the genes
+mean_sd_ddct_sex_stage_apoe <- make_table(contrast_ls_sex_stage_apoe, exprset_neg_ddct, unique(deg_ddct_sex_stage_apoe$Gene), deg_ddct_sex_stage_apoe)
+
+mean_sd_wb_sex_stage_apoe <- make_table(contrast_ls_sex_stage_apoe, exprset_wb, unique(deg_wb_sex_stage_apoe$Gene), deg_wb_sex_stage_apoe)
+```
+
+
+Making mean sd table for the sex_ad_apoe
+```{r Making mean sd table for the sex_ad_apoe}
+# contrast list
+contrast_ls_sex_ad_apoe <- apply(matrix(c("F_NL_33", "M_NL_33", "F_NL_34", "M_NL_34", "F_AD_33", "M_AD_33", "F_AD_34", "M_AD_34", "F_AD_33", "F_NL_33", "F_AD_34", "F_NL_34", "M_AD_33", "M_NL_33", "M_AD_34", "M_NL_34"), 2), 2, as.list)
+
+# subsetting deg set
+deg_ddct_sex_ad_apoe <- deg_ddct[Contrast %in% sapply(contrast_ls_sex_ad_apoe, function(x) paste0(x[[1]], "-", x[[2]]))]
+
+deg_wb_sex_ad_apoe <- deg_wb[Contrast %in% sapply(contrast_ls_sex_ad_apoe, function(x) paste0(x[[1]], "-", x[[2]]))]
+
+# checking contrast orders between deg dfs and contrast_ls
+identical(deg_ddct_sex_ad_apoe$Contrast, rep(sapply(contrast_ls_sex_ad_apoe, function(x) paste0(x[[1]], "-", x[[2]])), length(unique(deg_ddct_sex_ad_apoe$Gene))))
+
+identical(deg_wb_sex_ad_apoe$Contrast, rep(sapply(contrast_ls_sex_ad_apoe, function(x) paste0(x[[1]], "-", x[[2]])), length(unique(deg_wb_sex_ad_apoe$Gene))))
+
+# Making mean sd table for the genes
+mean_sd_ddct_sex_ad_apoe <- make_table(contrast_ls_sex_ad_apoe, exprset_neg_ddct, unique(deg_ddct_sex_ad_apoe$Gene), deg_ddct_sex_ad_apoe)
+
+mean_sd_wb_sex_ad_apoe <- make_table(contrast_ls_sex_ad_apoe, exprset_wb, unique(deg_wb_sex_ad_apoe$Gene), deg_wb_sex_ad_apoe)
+```
+
+
+Writing results
+```{r Writing results}
+# Sex_Stage_APOE
+mapply(fwrite, mean_sd_ddct_sex_stage_apoe, paste0("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/barplot/qPCR/Sex_Stage_APOE/mean_sd_", unique(deg_ddct_sex_stage_apoe$Gene), "_neg_ddct.csv"))
+
+
+mapply(fwrite, mean_sd_wb_sex_stage_apoe, paste0("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/barplot/WesternBlot/Sex_Stage_APOE/mean_sd_", unique(deg_wb_sex_stage_apoe$Gene), "_wb.csv"))
+
+# Sex_AD_APOE
+# Sex_AD_APOE
+mapply(fwrite, mean_sd_ddct_sex_ad_apoe, paste0("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/barplot/qPCR/Sex_AD_APOE/mean_sd_", unique(deg_ddct_sex_ad_apoe$Gene), "_neg_ddct.csv"))
+
+
+mapply(fwrite, mean_sd_wb_sex_ad_apoe, paste0("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/barplot/WesternBlot/Sex_AD_APOE/mean_sd_", unique(deg_wb_sex_ad_apoe$Gene), "_wb.csv"))
+```
+

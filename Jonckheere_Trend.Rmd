@@ -1,0 +1,106 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+Loading packages
+```{r Loading packages, message=FALSE, warning=FALSE}
+library(wrapr)
+library(data.table)
+library(Biobase)
+```
+
+
+Functions
+```{r Functions}
+Jonckheere=function (y, x) 
+{
+    is.rm = is.na(y) | is.na(x)
+    y = y[!is.rm]
+    x = x[!is.rm]
+    dat = split(y, as.ordered(x))
+    dat = dat[sapply(dat, length) > 0]
+    M = length(dat)
+    if (M < 3) 
+        stop("At least 3 groups are required\\n")
+    nt = sapply(dat, function(a) length(a))
+    dat = unlist(dat)
+    cnt = c(0, cumsum(nt))
+    N = length(y)
+    J = sapply(1:(M - 1), function(i) {
+        sum(sapply(dat[(cnt[i] + 1):cnt[i + 1]], function(d) sum(dat[(cnt[i + 
+            1] + 1):N] > d)))
+    })
+    J = sum(J)
+    eJ = (N * N - sum(nt * nt))/4
+    varJ = (N * N * (2 * N + 3) - sum(nt * nt * (2 * nt + 3)))/72
+    Z = (J - eJ)/sqrt(varJ)
+    p = 2 * pnorm(-abs(Z))
+    return(c(J = J, Z = Z, p.value = p))
+}
+
+
+sub_exprset_sex_ad_apoe <- function(exprset) {
+	
+  F_APOE_23 <- exprs(exprset[, exprset$Sex_AD_APOE == "F_AD_23"])
+  F_APOE_33 <- exprs(exprset[, exprset$Sex_AD_APOE == "F_AD_33"])
+  F_APOE_34 <- exprs(exprset[, exprset$Sex_AD_APOE == "F_AD_34"])
+  F_APOE_ordered <- cbind(F_APOE_23, F_APOE_33, F_APOE_34)
+  F_APOE_level <- c(rep(1, ncol(F_APOE_23)), rep(2, ncol(F_APOE_33)), rep(3, ncol(F_APOE_34)))
+  
+  
+  M_APOE_33 <- exprs(exprset[, exprset$Sex_AD_APOE == "M_AD_33"])
+  M_APOE_34 <- exprs(exprset[, exprset$Sex_AD_APOE == "M_AD_34"])
+  M_APOE_44 <- exprs(exprset[, exprset$Sex_AD_APOE == "M_AD_44"])
+  
+  M_APOE_ordered <- cbind(M_APOE_33, M_APOE_34, M_APOE_44)
+	M_APOE_level <- c(rep(1, ncol(M_APOE_33)), rep(2, ncol(M_APOE_34)), rep(3, ncol(M_APOE_44)))
+	
+	
+	my_values <- list(F_APOE_level, F_APOE_ordered, M_APOE_level, M_APOE_ordered)
+	
+	return(my_values)
+}
+```
+
+
+Reading expressionset
+```{r Reading expressionset}
+exprset_wb <- readRDS("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/data/exprset_western_blot_4-16-2019.Rds")
+
+# checking sample size for each group
+table(pData(exprset_wb)$Sex_AD_APOE)
+```
+
+
+Trend analysis AD
+```{r Trend analysis}
+dat_for_fit_sex_ad_apoe <- sub_exprset_sex_ad_apoe(exprset_wb)
+
+fit_sex_ad_apoe_F <- as.data.frame(t(apply(dat_for_fit_sex_ad_apoe[[2]], 1, function(y, x) Jonckheere(y, x=dat_for_fit_sex_ad_apoe[[1]]))))
+colnames(fit_sex_ad_apoe_F) <- paste0(colnames(fit_sex_ad_apoe_F), "_F")
+fit_sex_ad_apoe_F$p.adj_F <- p.adjust(fit_sex_ad_apoe_F$p.value_F, method = "BH")
+
+fit_sex_ad_apoe_M <- as.data.frame(t(apply(dat_for_fit_sex_ad_apoe[[4]], 1, function(y, x) Jonckheere(y, x=dat_for_fit_sex_ad_apoe[[3]]))))
+colnames(fit_sex_ad_apoe_M) <- paste0(colnames(fit_sex_ad_apoe_M), "_M")
+fit_sex_ad_apoe_M$p.adj_M <- p.adjust(fit_sex_ad_apoe_M$p.value_M, method = "BH")
+
+# merging F and M
+fit_sex_ad_apoe_FM <- cbind(fit_sex_ad_apoe_F, fit_sex_ad_apoe_M)
+
+# calculating p values for trend differences
+fit_sex_ad_apoe_FM$Z.F_Z.M_diff <- fit_sex_ad_apoe_FM$Z_F - fit_sex_ad_apoe_FM$Z_M
+
+for (i in 1:nrow(fit_sex_ad_apoe_FM)){
+	fit_sex_ad_apoe_FM$p_z_diff[i] <- 2*pnorm(fit_sex_ad_apoe_FM$Z.F_Z.M_diff[i],lower.tail= fit_sex_ad_apoe_FM$Z.F_Z.M_diff[i] < 0)
+}
+
+fit_sex_ad_apoe_FM$p.adj_F_M_diff <- p.adjust(fit_sex_ad_apoe_FM$p_z_diff, method = "BH")
+```
+
+Writing files
+```{r Writing files}
+fwrite(fit_sex_ad_apoe_FM, "sex_ad_apoe_wb_trend_analysis.csv", row.names = T)
+```
+

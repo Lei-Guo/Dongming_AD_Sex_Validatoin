@@ -1,0 +1,114 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Rscript -e "rmarkdown::render('Make_Expressionset.Rmd')"
+
+Loading packages
+```{r Loading packages, message=FALSE, warning=FALSE}
+library(wrapr)
+library(data.table)
+library(readxl)
+library(limma)
+library(Biobase)
+rm(list=ls())
+```
+
+
+Reading qPCR data
+```{r Reading qPCR data}
+ddct <- read_xlsx("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/data/validation raw data WB qPCR summary for Lei 041519 corrected by PMI.xlsx", sheet = "qPCR")
+ddct <- as.data.frame(ddct)
+
+# renaming the columns
+colnames(ddct)[c(1:8)] <- qc(Sample_ID, PMI, Age, APOE, Sex, CDR, Diagnosis, INPP5)
+
+colnames(ddct)[c(8:32)] <- toupper(colnames(ddct)[c(8:32)])
+
+# cleaning the trait columns
+ddct$APOE <- gsub("\\.", "", ddct$APOE)
+
+ddct$Sample_ID <- paste0("S", ddct$Sample_ID)
+
+ddct$Sex <- ifelse(ddct$Sex == 0, "M", "F")
+
+ddct$Diagnosis <- gsub("control", "NL", ddct$Diagnosis)
+
+rownames(ddct) <- ddct$Sample_ID
+```
+
+
+
+Reading Western Blot data
+```{r Reading Western Blot data}
+wb <- read_xlsx("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/data/validation raw data WB qPCR summary for Lei 041519 corrected by PMI.xlsx", sheet = "WB")
+wb <- as.data.frame(wb)
+
+# renaming the columns
+colnames(wb)[c(1:13)] <- qc(Sample_ID, PMI, Age, APOE, Sex, CDR, Diagnosis, Abeta40, Abeta42, pTau, Tau, Abeta_42_40, pTau_Tau)
+
+colnames(wb)[c(14:27)] <- gsub(" protein", "", colnames(wb)[c(14:27)])
+
+colnames(wb)[c(14:27)] <- toupper(colnames(wb)[c(14:27)])
+
+# cleaning the trait columns
+wb$APOE <- gsub("\\.", "", wb$APOE)
+
+wb$Sample_ID <- paste0("S", wb$Sample_ID)
+
+wb$Sex <- ifelse(wb$Sex == 0, "M", "F")
+
+wb$Diagnosis <- gsub("control", "NL", wb$Diagnosis)
+
+rownames(wb) <- wb$Sample_ID
+```
+
+
+Making meta table and expression matrix
+```{r Making meta table and expression matrix}
+# making meta table
+meta <- wb[, 1:13]
+
+meta$AD_Stage <- ifelse((meta$CDR <= 3 & meta$Diagnosis == "AD"), "AD_early", ifelse((meta$CDR > 3 & meta$Diagnosis == "AD"), "AD_late", "NL"))
+
+meta$Sex_AD <- paste0(meta$Sex, "_", meta$Diagnosis)
+meta$Sex_AD_APOE <- paste(meta$Sex, meta$Diagnosis, meta$APOE, sep = "_")
+meta$Sex_Stage <- paste0(meta$Sex, "_", meta$AD_Stage)
+meta$Sex_Stage_APOE <- paste0(meta$Sex, "_", meta$AD_Stage, "_", meta$APOE)
+
+# subsetting ddct with samples overlaped between ddct and wb
+ddct_sub <- ddct[ddct$Sample_ID %in% wb$Sample_ID, ]
+# matching sample order between meta and ddct_sub
+ddct_sub <- ddct_sub[match(ddct_sub$Sample_ID, meta$Sample_ID), ]
+
+# making expression matrix
+ddct_sub_mx <- -1 * t(ddct_sub[, -c(1:7)])
+
+wb_mx <- t(wb[, -c(1:13)])
+```
+
+
+Making expressionset
+```{r Making expressionset}
+# checking if rownames and colnames of meta and expr are same
+identical(colnames(ddct_sub_mx), rownames(meta))
+identical(colnames(wb_mx), rownames(meta))
+
+# creating meta info for the expressionset
+phenoData <- new("AnnotatedDataFrame", data = meta)
+
+# constructing an expressionset
+exprset_ddct_sub_neg <- ExpressionSet(assayData = ddct_sub_mx, phenoData = phenoData)
+exprset_wb <- ExpressionSet(assayData = wb_mx, phenoData = phenoData)
+```
+
+
+Saving results
+```{r Saving results}
+# saving expressionset
+saveRDS(exprset_ddct_sub_neg, "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/data/exprset_neg_ddct_4-16-2019.Rds")
+
+saveRDS(exprset_wb, "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/data/exprset_western_blot_4-16-2019.Rds")
+```
+

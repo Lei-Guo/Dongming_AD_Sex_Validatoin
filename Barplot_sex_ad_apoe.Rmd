@@ -1,0 +1,78 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Rscript -e "rmarkdown::render('Barplot.Rmd')"
+
+Loading packages
+```{r Loading packages}
+library(data.table)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggsignif)
+rm(list=ls())
+```
+
+
+Functions
+```{r Functions}
+bar_ggplot_sex_ad_apoe <- function(gene_id, p_mean_sd_table){
+    
+    dataset_name <- strsplit(tail(strsplit(p_mean_sd_table, "_")[[1]], 1),"[.]")[[1]][1]
+    
+    p_mean_sd <- fread(p_mean_sd_table)
+    p_mean_sd <- p_mean_sd[, Comparison := factor(Comparison, levels = c("F_AD_33-M_AD_33", "F_AD_34-M_AD_34", "F_NL_33-M_NL_33", "F_NL_34-M_NL_34", "F_AD_33-F_NL_33", "F_AD_34-F_NL_34", "M_AD_33-M_NL_33", "M_AD_34-M_NL_34"))][order(p_mean_sd$Comparison)]
+    
+    x <- melt(p_mean_sd, id=1, measure = patterns("_mean$", "_sd$"), variable.name = "group", value.name = c("group_mean", "group_sd"))
+    # x$group_mean <- 2^x$group_mean
+    # x$group_sd <- 2^x$group_sd
+    
+    bar_plot <- ggplot(x, aes(Comparison, group_mean, fill = group)) + 
+      geom_bar(colour="black", width = 0.75, position = "dodge", stat="identity") + 
+      geom_errorbar(aes(ymin=group_mean-group_sd, ymax=group_mean+group_sd), colour="black", width=.2, position=position_dodge(.9)) +
+	  theme(legend.position="none", legend.title = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+	  labs(x = "", y = sprintf('%s Expression', gene_id)) +
+	  theme(text = element_text(size=25), axis.text.x = element_text(angle = 65, hjust = 1)) +
+	  geom_signif(y_position=rep(max(x$group_mean)+0.05*max(x$group_mean), 8), xmin=c(0.8:7.8), xmax=c(1.2:8.2), tip_length = 0.01, textsize = 6, annotation=(ifelse(p_mean_sd$P.Value < 0.1 & p_mean_sd$P.Value > 0.001, "*", ifelse(p_mean_sd$P.Value < 0.001 & p_mean_sd$P.Value > 0.0001, "**", ifelse(p_mean_sd$P.Value < 0.0001, "***", "")))))
+}
+```
+
+
+
+Barplot for qPCR sex_stage_apoe
+```{r Barplot for qPCR sex_stage_apoe}
+p_mean_sd_files_qPCR_sex_ad_apoe <- list.files("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/barplot/qPCR/Sex_AD_APOE/", pattern = "^mean_sd_")
+gene_id_qPCR_sex_ad_apoe <- sapply(p_mean_sd_files_qPCR_sex_ad_apoe, function(x) strsplit(x, "_"))
+gene_id_qPCR_sex_ad_apoe <- sapply(gene_id_qPCR_sex_ad_apoe, "[[", 3)
+
+
+#make barplot
+my_bar_qPCR <- function(gene_id, p_mean_sd_file){
+	
+	bar <- bar_ggplot_sex_ad_apoe(gene_id, paste0("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/barplot/qPCR/Sex_AD_APOE/", p_mean_sd_file))
+	ggsave(paste0("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/barplot/qPCR/Sex_AD_APOE/", gene_id, "_bar_qPCR.png"), plot = bar,  width = 18, height = 11, units = "in", device = "png")
+}
+
+invisible(mapply(my_bar_qPCR, gene_id_qPCR_sex_ad_apoe, p_mean_sd_files_qPCR_sex_ad_apoe))
+```
+
+
+
+Barplot for wb sex_stage_apoe
+```{r Barplot for wb sex_stage_apoe}
+p_mean_sd_files_wb_sex_ad_apoe <- list.files("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/barplot/WesternBlot/Sex_AD_APOE/", pattern = "^mean_sd_")
+gene_id_wb_sex_ad_apoe <- sapply(p_mean_sd_files_wb_sex_ad_apoe, function(x) strsplit(x, "_"))
+gene_id_wb_sex_ad_apoe <- sapply(gene_id_wb_sex_ad_apoe, "[[", 3)
+
+
+#make barplot
+my_bar_wb <- function(gene_id, p_mean_sd_file){
+	
+	bar <- bar_ggplot_sex_ad_apoe(gene_id, paste0("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/barplot/WesternBlot/Sex_AD_APOE/", p_mean_sd_file))
+	ggsave(paste0("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/barplot/WesternBlot/Sex_AD_APOE/", gene_id, "_bar_wb.png"), plot = bar,  width = 18, height = 11, units = "in", device = "png")
+}
+
+invisible(mapply(my_bar_wb, gene_id_wb_sex_ad_apoe, p_mean_sd_files_wb_sex_ad_apoe))
+```

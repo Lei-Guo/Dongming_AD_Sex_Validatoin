@@ -1,0 +1,63 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Rscript -e "rmarkdown::render('Combine_DEG_Results.Rmd')"
+
+Loading packages
+```{r Loading packages, message=FALSE, warning=FALSE}
+library(wrapr)
+library(data.table)
+rm(list=ls())
+```
+
+
+
+Reading DEGs
+```{r Reading DEGs}
+# DEG paths
+deg_qpcr_path <- paste0("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/qPCR/", c("Sex_AD/", "Sex_AD_APOE/", "Sex_Stage/", "Sex_Stage_APOE/"))
+deg_qpcr_file_names <- unlist(lapply(deg_qpcr_path, function(x) paste0(x, list.files(x))))
+
+deg_wb_path <- paste0("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/WesternBlot/", c("Sex_AD/", "Sex_AD_APOE/", "Sex_Stage/", "Sex_Stage_APOE/"))
+deg_wb_file_names <- unlist(lapply(deg_wb_path, function(x) paste0(x, list.files(x))))
+
+
+# reading degs qPCR
+deg_qpcr <- lapply(deg_qpcr_file_names, fread)
+names(deg_qpcr) <- deg_qpcr_file_names
+
+# reading degs wb
+deg_wb <- lapply(deg_wb_file_names, fread)
+names(deg_wb) <- deg_wb_file_names
+```
+
+
+
+Combining DEG results
+```{r Combining DEG results}
+# qPCR
+deg_qpcr_df <- rbindlist(deg_qpcr)
+deg_qpcr_df$Contrast <- unlist(mapply(rep, gsub("\\.csv|DEG_", "", basename(deg_qpcr_file_names)), sapply(deg_qpcr, nrow), SIMPLIFY = F))
+# removing duplicated DEG sets
+deg_qpcr_df <- rbindlist(lapply(unique(deg_qpcr_df$V1), function(x) deg_qpcr_df[V1 == x][!duplicated(Contrast), ]))
+colnames(deg_qpcr_df)[1] <- "Gene"
+
+#wb
+deg_wb_df <- rbindlist(deg_wb)
+deg_wb_df$Contrast <- unlist(mapply(rep, gsub("\\.csv|DEG_", "", basename(deg_wb_file_names)), sapply(deg_wb, nrow), SIMPLIFY = F))
+# removing duplicated DEG sets
+deg_wb_df <- rbindlist(lapply(unique(deg_wb_df$V1), function(x) deg_wb_df[V1 == x][!duplicated(Contrast), ]))
+colnames(deg_wb_df)[1] <- "Gene"
+```
+
+
+
+Writing results
+```{r Writing results}
+fwrite(deg_qpcr_df, "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/qPCR/DEG_qPCR_combined.csv")
+
+fwrite(deg_wb_df, "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/WesternBlot/DEG_WesternBlot_combined.csv")
+```
+

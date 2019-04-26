@@ -1,0 +1,224 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Rscript -e "rmarkdown::render('DE_Analysis.Rmd')"
+
+Loading packages
+```{r Loading packages, message=FALSE, warning=FALSE}
+library(wrapr)
+library(data.table)
+library(limma)
+library(Biobase)
+rm(list=ls())
+```
+
+
+Functions
+```{r Functions}
+# subsetting expressionset by comparison groups
+exprset_subset <- function(expressionset, comparison_groups, treatment_column){
+expressionset[, expressionset[[treatment_column]] == comparison_groups[1] | expressionset[[treatment_column]] == comparison_groups[2]]
+}
+
+
+# DE Analysis
+de_analysis <- function(expressionset, contrast, treatment_column){ 
+# making design matrix
+design <- model.matrix(~ 0 + factor(expressionset[[treatment_column]]))
+colnames(design) <- levels(factor(expressionset[[treatment_column]]))
+
+# making contrast matrix
+ctrst <- makeContrasts(contrasts = contrast, levels = design)
+
+# de analyis
+fit <- lmFit(expressionset, design)
+fit_2 <- contrasts.fit(fit, ctrst)
+fit_2 <- eBayes(fit_2)
+
+# saving the results
+res <- topTable(fit_2, n = Inf)
+}
+
+
+# saving DEGs
+save_degs <- function(deg_df_list, comparison_group_list, outpath){
+deg_df_list <- lapply(deg_df_list, as.data.frame)
+invisible(mapply(fwrite, deg_df_list, paste0(outpath, "DEG_", comparison_group_list, ".csv"), MoreArgs = list(row.names = T)))}
+```
+
+
+Reading expressionsets
+```{r Reading expressionsets}
+exprset_ddct <- readRDS("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/data/exprset_neg_ddct_4-16-2019.Rds")
+
+exprset_wb <- readRDS("/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/data/exprset_western_blot_4-16-2019.Rds")
+```
+
+
+Making contrast gruops
+```{r Making contrast gruops}
+# Sex_Stage
+# checking sample size
+table(pData(exprset_ddct)$Sex_Stage)
+# contrast groups (removing groups with only 1 sample)
+cmb_groups_sex_stage_ls <- combn(unique(pData(exprset_ddct)$Sex_Stage)[1:6], 2)
+cmb_groups_sex_stage_ls <- apply(cmb_groups_sex_stage_ls, 2, as.list)
+contrast_sex_stage_ls <- sapply(cmb_groups_sex_stage_ls, function(x) paste0(x[1], "-", x[2]))
+
+
+
+# Sex_Stage_APOE
+# checking sample size
+table(pData(exprset_ddct)$Sex_Stage_APOE)
+
+# contrast groups (removing groups with only 1 sample)
+cmb_groups_Sex_Stage_APOE_ls <- combn(c("F_AD_early_23", "F_AD_early_33", "F_AD_early_34", "F_AD_late_23", "F_AD_late_33", "F_AD_late_34", "F_NL_33", "F_NL_34", "M_AD_early_33", "M_AD_early_34", "M_AD_late_33", "M_AD_late_34", "M_NL_23", "M_NL_33", "M_NL_34"), 2)
+cmb_groups_Sex_Stage_APOE_ls <- apply(cmb_groups_Sex_Stage_APOE_ls, 2, as.list)
+contrast_Sex_Stage_APOE_ls <- sapply(cmb_groups_Sex_Stage_APOE_ls, function(x) paste0(x[1], "-", x[2]))
+
+
+
+# Sex_AD_APOE
+# checking sample size
+table(pData(exprset_ddct)$Sex_AD_APOE)
+
+# contrast groups
+cmb_groups_Sex_AD_APOE_ls <- combn(c("F_AD_22", "F_AD_23", "F_AD_33", "F_AD_34", "F_NL_33", "F_NL_34", "M_AD_33", "M_AD_34", "M_NL_23", "M_NL_33", "M_NL_34"), 2)
+cmb_groups_Sex_AD_APOE_ls <- apply(cmb_groups_Sex_AD_APOE_ls, 2, as.list)
+contrast_Sex_AD_APOE_ls <- sapply(cmb_groups_Sex_AD_APOE_ls, function(x) paste0(x[1], "-", x[2]))
+
+
+
+# Sex_AD
+# checking sample size
+table(pData(exprset_ddct)$Sex_AD)
+
+# contrast groups
+cmb_groups_Sex_AD_ls <- combn(unique(pData(exprset_ddct)$Sex_AD), 2)
+cmb_groups_Sex_AD_ls <- apply(cmb_groups_Sex_AD_ls, 2, as.list)
+contrast_Sex_AD_ls <- sapply(cmb_groups_Sex_AD_ls, function(x) paste0(x[1], "-", x[2]))
+```
+
+
+
+
+DE Analysis qPCR
+```{r DE Analysis qPCR}
+# Sex_Stage
+# subsetting expressionset
+exprset_sex_stage_ls <- lapply(cmb_groups_sex_stage_ls, exprset_subset, expressionset = exprset_ddct, treatment_column = "Sex_Stage")
+
+# DE analysis
+degs_sex_stage <- mapply(de_analysis, exprset_sex_stage_ls, contrast_sex_stage_ls, MoreArgs = list(treatment_column = "Sex_Stage"), SIMPLIFY = F)
+names(degs_sex_stage) <- contrast_sex_stage_ls
+
+
+
+
+# Sex_Stage_APOE
+# subsetting expressionset
+exprset_Sex_Stage_APOE_ls <- lapply(cmb_groups_Sex_Stage_APOE_ls, exprset_subset, expressionset = exprset_ddct, treatment_column = "Sex_Stage_APOE")
+
+# DE analysis
+degs_Sex_Stage_APOE <- mapply(de_analysis, exprset_Sex_Stage_APOE_ls, contrast_Sex_Stage_APOE_ls, MoreArgs = list(treatment_column = "Sex_Stage_APOE"), SIMPLIFY = F)
+names(degs_Sex_Stage_APOE) <- contrast_Sex_Stage_APOE_ls
+
+
+
+
+# Sex_AD_APOE
+# subsetting expressionset
+exprset_Sex_AD_APOE_ls <- lapply(cmb_groups_Sex_AD_APOE_ls, exprset_subset, expressionset = exprset_ddct, treatment_column = "Sex_AD_APOE")
+
+# DE analysis
+degs_Sex_AD_APOE <- mapply(de_analysis, exprset_Sex_AD_APOE_ls, contrast_Sex_AD_APOE_ls, MoreArgs = list(treatment_column = "Sex_AD_APOE"), SIMPLIFY = F)
+names(degs_Sex_AD_APOE) <- contrast_Sex_AD_APOE_ls
+
+
+
+
+# Sex_AD
+# subsetting expressionset
+exprset_Sex_AD_ls <- lapply(cmb_groups_Sex_AD_ls, exprset_subset, expressionset = exprset_ddct, treatment_column = "Sex_AD")
+
+# DE analysis
+degs_Sex_AD <- mapply(de_analysis, exprset_Sex_AD_ls, contrast_Sex_AD_ls, MoreArgs = list(treatment_column = "Sex_AD"), SIMPLIFY = F)
+names(degs_Sex_AD) <- contrast_Sex_AD_ls
+```
+
+
+
+
+DE Analysis Western Blot
+```{r DE Analysis Western Blot}
+# Sex_Stage
+# subsetting expressionset
+exprset_sex_stage_wb_ls <- lapply(cmb_groups_sex_stage_ls, exprset_subset, expressionset = exprset_wb, treatment_column = "Sex_Stage")
+
+# DE analysis
+degs_sex_stage_wb <- mapply(de_analysis, exprset_sex_stage_wb_ls, contrast_sex_stage_ls, MoreArgs = list(treatment_column = "Sex_Stage"), SIMPLIFY = F)
+names(degs_sex_stage_wb) <- contrast_sex_stage_ls
+
+
+
+
+# Sex_Stage_APOE
+# subsetting expressionset
+exprset_Sex_Stage_APOE_wb_ls <- lapply(cmb_groups_Sex_Stage_APOE_ls, exprset_subset, expressionset = exprset_wb, treatment_column = "Sex_Stage_APOE")
+
+# DE analysis
+degs_Sex_Stage_APOE_wb <- mapply(de_analysis, exprset_Sex_Stage_APOE_wb_ls, contrast_Sex_Stage_APOE_ls, MoreArgs = list(treatment_column = "Sex_Stage_APOE"), SIMPLIFY = F)
+names(degs_Sex_Stage_APOE_wb) <- contrast_Sex_Stage_APOE_ls
+
+
+
+
+# Sex_AD_APOE
+# subsetting expressionset
+exprset_Sex_AD_APOE_wb_ls <- lapply(cmb_groups_Sex_AD_APOE_ls, exprset_subset, expressionset = exprset_wb, treatment_column = "Sex_AD_APOE")
+
+# DE analysis
+degs_Sex_AD_APOE_wb <- mapply(de_analysis, exprset_Sex_AD_APOE_wb_ls, contrast_Sex_AD_APOE_ls, MoreArgs = list(treatment_column = "Sex_AD_APOE"), SIMPLIFY = F)
+names(degs_Sex_AD_APOE_wb) <- contrast_Sex_AD_APOE_ls
+
+
+
+
+# Sex_AD
+# subsetting expressionset
+exprset_Sex_AD_wb_ls <- lapply(cmb_groups_Sex_AD_ls, exprset_subset, expressionset = exprset_wb, treatment_column = "Sex_AD")
+
+# DE analysis
+degs_Sex_AD_wb <- mapply(de_analysis, exprset_Sex_AD_wb_ls, contrast_Sex_AD_ls, MoreArgs = list(treatment_column = "Sex_AD"), SIMPLIFY = F)
+names(degs_Sex_AD_wb) <- contrast_Sex_AD_ls
+```
+
+
+
+Save the results
+```{r Save the results}
+# qPCR
+# Sex_Stage
+save_degs(degs_sex_stage, names(degs_sex_stage), "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/qPCR/Sex_Stage/")
+# Sex_Stage_APOE
+save_degs(degs_Sex_Stage_APOE, names(degs_Sex_Stage_APOE), "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/qPCR/Sex_Stage_APOE/")
+# Sex_AD_APOE
+save_degs(degs_Sex_AD_APOE, names(degs_Sex_AD_APOE), "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/qPCR/Sex_AD_APOE/")
+# Sex_AD
+save_degs(degs_Sex_AD, names(degs_Sex_AD), "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/qPCR/Sex_AD/")
+
+
+
+# WB
+# Sex_Stage
+save_degs(degs_sex_stage_wb, names(degs_sex_stage_wb), "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/WesternBlot/Sex_Stage/")
+# Sex_Stage_APOE
+save_degs(degs_Sex_Stage_APOE_wb, names(degs_Sex_Stage_APOE_wb), "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/WesternBlot/Sex_Stage_APOE/")
+# Sex_AD_APOE
+save_degs(degs_Sex_AD_APOE_wb, names(degs_Sex_AD_APOE_wb), "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/WesternBlot/Sex_AD_APOE/")
+# Sex_AD
+save_degs(degs_Sex_AD_wb, names(degs_Sex_AD_wb), "/sc/orga/projects/zhangb03a/lei_guo/sex_diff_validation/Dongming/DE_Results/WesternBlot/Sex_AD/")
+```
+
